@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity 0.8.27;
 
-import {FHESafeMath} from "openzeppelin-confidential-contracts/contracts/utils/FHESafeMath.sol";
+import {FHESafeMath} from "@openzeppelin/confidential-contracts/utils/FHESafeMath.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {RegulatedERC7984Upgradeable} from "../token/RegulatedERC7984Upgradeable.sol";
-import {EthereumConfigUpgradeable} from "../fhevm/EthereumConfigUpgradeable.sol";
 import {FHE, ebool, euint64, externalEuint64 } from "@fhevm/solidity/lib/FHE.sol";
 import {AdminProvider} from "../admin/AdminProvider.sol";
 import {FeeManager} from "../admin/FeeManager.sol";

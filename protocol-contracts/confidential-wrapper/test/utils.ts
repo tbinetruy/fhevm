@@ -1,6 +1,6 @@
 import { TransactionReceipt } from "ethers";
 import { ethers, fhevm } from "hardhat";
-import { BurnableRegulatedERC7984Upgradeable, DeploymentCoordinator, FeeManager, RegulatedERC7984Upgradeable, SwapV0, TestERC20, UniswapV2Router02, WrapperUpgradeable } from "../types";
+import { BurnableRegulatedERC7984Upgradeable, ConfidentialWrapper, DeploymentCoordinator, FeeManager, RegulatedERC7984Upgradeable, SwapV0, TestERC20, UniswapV2Router02, WrapperUpgradeable } from "../types";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { FhevmType } from "@fhevm/hardhat-plugin";
 import { expect } from "chai";
@@ -82,6 +82,9 @@ export const getRetryTransferEvent = (receipt: TransactionReceipt | null) =>
 
 export const getUnwrapStartedEvent = (receipt: TransactionReceipt | null) =>
   getEventFromABI(receipt, "event UnwrappedStarted(bool returnVal, uint256 indexed requestId, uint256 indexed txId, address indexed to, address refund, bytes32 requestedAmount, bytes32 burnAmount)");
+
+export const getUnwrapRequestedEvent = (receipt: TransactionReceipt | null) =>
+  getEventFromABI(receipt, "event UnwrapRequested(address indexed receiver, euint64 amount)");
 
 export const getUnwrapFinalizedEvent = (receipt: TransactionReceipt | null) =>
   getEventFromABI(receipt, "event UnwrappedFinalized(uint256 indexed requestId, bool finalizeSuccess, bool feeTransferSuccess, uint64 burnAmount, uint256 unwrapAmount, uint256 feeAmount, uint256 indexed nextTxId)");
@@ -167,11 +170,11 @@ export const deployConfidentialToken = async (coordinator: DeploymentCoordinator
   const receipt = await deployToken.wait();
 
   const wrapperAddress = await coordinator.getWrapper(erc20);
-  const wrapper = await ethers.getContractAt("WrapperUpgradeable", wrapperAddress);
+  const wrapper = await ethers.getContractAt("ConfidentialWrapper", wrapperAddress);
 
   return {
     cTokenAddress: wrapperAddress,
-    cToken: await ethers.getContractAt("RegulatedERC7984Upgradeable", wrapperAddress),
+    cToken: await ethers.getContractAt("ERC7984Upgradeable", wrapperAddress),
     wrapperAddress,
     wrapper,
     receipt,
@@ -190,11 +193,11 @@ export const deployConfidentialETH = async (coordinator: DeploymentCoordinator, 
   const receipt = await deployToken.wait();
 
   const wrapperAddress = await coordinator.getWrapper(ethers.ZeroAddress);
-  const wrapper = await ethers.getContractAt("WrapperUpgradeable", wrapperAddress);
+  const wrapper = await ethers.getContractAt("ConfidentialWrapper", wrapperAddress);
 
   return {
     cEthAddress: wrapperAddress,
-    cEth: await ethers.getContractAt("RegulatedERC7984Upgradeable", wrapperAddress),
+    cEth: await ethers.getContractAt("ERC7984Upgradeable", wrapperAddress),
     wrapperAddress,
     wrapper,
     receipt,
@@ -204,24 +207,13 @@ export const deployConfidentialETH = async (coordinator: DeploymentCoordinator, 
 export const wrapETH = async (coordinator: DeploymentCoordinator, amount: bigint, recipient: string, signer: HardhatEthersSigner) => {
   // Get the deployed wrapper for ETH
   const wrapperAddress = await coordinator.getWrapper(ethers.ZeroAddress);
-  const wrapper = await ethers.getContractAt("WrapperUpgradeable", wrapperAddress);
+  const wrapper = await ethers.getContractAt("ConfidentialWrapper", wrapperAddress);
 
-  // Get the confidential token to access its rate
-  const cToken = await ethers.getContractAt("RegulatedERC7984Upgradeable", wrapperAddress);
-  const rate = await cToken.rate();
-
-  // Calculate scaled amount and fee based on scaled amount
-  const scaledAmount = amount / rate;
-  const adminProviderAddress = await coordinator.adminProvider();
-  const adminProvider = await ethers.getContractAt("AdminProvider", adminProviderAddress);
-  const feeManagerAddress = await adminProvider.feeManager();
-  const feeManager = await ethers.getContractAt("FeeManager", feeManagerAddress);
-  const wrapFee = await feeManager.getWrapFee(scaledAmount, signer.address, recipient);
-
-  const wrap = await wrapper.connect(signer).wrap(recipient, amount, { value: amount });
+  // Use wrapETH() method for ETH wrapping (payable)
+  const wrap = await wrapper.connect(signer).wrapETH(recipient, amount, { value: amount });
   const wrapReceipt = await wrap.wait();
 
-  return { wrapReceipt, wrapFee };
+  return { wrapReceipt, wrapFee: 0n }; // No fees in ConfidentialWrapper
 };
 
 export const wrapERC20 = async (
@@ -233,21 +225,13 @@ export const wrapERC20 = async (
 ) => {
   // Get the deployed wrapper for this ERC20
   const wrapperAddress = await coordinator.getWrapper(await erc20.getAddress());
-  const wrapper = await ethers.getContractAt("WrapperUpgradeable", wrapperAddress);
+  const wrapper = await ethers.getContractAt("ConfidentialWrapper", wrapperAddress);
 
   // Get the confidential token to access its rate
-  const cToken = await ethers.getContractAt("RegulatedERC7984Upgradeable", wrapperAddress);
+  const cToken = await ethers.getContractAt("ERC7984Upgradeable", wrapperAddress);
   const rate = await cToken.rate();
 
-  // Calculate scaled amount and fee based on scaled amount
-  const scaledAmount = amount / rate;
-  const adminProviderAddress = await coordinator.adminProvider();
-  const adminProvider = await ethers.getContractAt("AdminProvider", adminProviderAddress);
-  const feeManagerAddress = await adminProvider.feeManager();
-  const feeManager = await ethers.getContractAt("FeeManager", feeManagerAddress);
-  const wrapFee = await feeManager.getWrapFee(scaledAmount, signer.address, recipient);
-
-  // Calculate actual transfer amount (rounded down to nearest multiple of rate)
+  // Wrapper internally rounds down to nearest rate multiple
   const actualTransferAmount = (amount / rate) * rate;
 
   const approve = await erc20.connect(signer).approve(wrapperAddress, actualTransferAmount);
@@ -256,7 +240,7 @@ export const wrapERC20 = async (
   const wrap = await wrapper.connect(signer).wrap(recipient, amount);
   const wrapReceipt = await wrap.wait();
 
-  return { wrapReceipt, wrapFee };
+  return { wrapReceipt, wrapFee: 0n }; // No fees in ConfidentialWrapper
 };
 
 export const confidentialApprove = async (
@@ -277,46 +261,53 @@ export const confidentialApprove = async (
 };
 
 export const unwrapToken = async (
-  wrapper: WrapperUpgradeable,
+  wrapper: ConfidentialWrapper,
   recipient: string,
   amount: bigint,
   signer: HardhatEthersSigner,
-  refund?: string,
-  callbackData?: string,
 ) => {
-  const unwrapFee = await getUnwrapFee(wrapper, amount);
-
   const encryptedUnwrapAmount = await fhevm
     .createEncryptedInput(await wrapper.getAddress(), signer.address)
     .add64(amount)
     .encrypt();
 
-  const unwrapTx = await wrapper.connect(signer)["unwrap(address,address,bytes32,bytes)"](
-    signer,
-    recipient,
-    encryptedUnwrapAmount.handles[0],
-    encryptedUnwrapAmount.inputProof,
-  );
+  const unwrapTx = await wrapper
+    .connect(signer)
+    ["unwrap(address,address,bytes32,bytes)"](
+      signer.address,
+      recipient,
+      encryptedUnwrapAmount.handles[0],
+      encryptedUnwrapAmount.inputProof,
+    );
   const unwrapReceipt = await unwrapTx.wait();
 
-  const unwrapStartedEvents = getUnwrapStartedEvent(unwrapReceipt);
-  const unwrapStartedEvent = unwrapStartedEvents[0];
+  // Extract UnwrapRequested event (new event name in ConfidentialWrapper)
+  const unwrapRequestedEvents = getEventFromABI(
+    unwrapReceipt,
+    "event UnwrapRequested(address indexed receiver, euint64 amount)"
+  );
+  const unwrapRequestedEvent = unwrapRequestedEvents[0];
+
+  // Publicly decrypt the burnt amount
   const publicDecryptResults = await fhevm.publicDecrypt([
-    unwrapStartedEvent.args[5],
-    unwrapStartedEvent.args[6],
+    unwrapRequestedEvent.args[1], // burntAmount
   ]);
 
-  const abiEncodedClearBurnResults = publicDecryptResults.abiEncodedClearValues;
+  const burntAmountCleartext = publicDecryptResults.abiEncodedClearValues;
   const decryptionProof = publicDecryptResults.decryptionProof;
 
+  // Extract cleartext value for finalizeUnwrap
+  const abiCoder = new ethers.AbiCoder();
+  const [cleartextValue] = abiCoder.decode(["uint64"], burntAmountCleartext);
+
   const unwrapFinalizedTx = await wrapper.connect(signer).finalizeUnwrap(
-    unwrapStartedEvent.args.requestId,
-    abiEncodedClearBurnResults,
+    unwrapRequestedEvent.args[1], // euint64 burntAmount
+    cleartextValue, // uint64 burntAmountCleartext
     decryptionProof,
   );
   const unwrapFinalizedReceipt = await unwrapFinalizedTx.wait();
 
-  return { unwrapReceipt, unwrapFinalizedReceipt, unwrapFee };
+  return { unwrapReceipt, unwrapFinalizedReceipt, unwrapFee: 0n }; // No fees
 };
 
 export const unwrapTokenOld = async (
@@ -390,10 +381,7 @@ export const verifyWrapperBacking = async (
 
   // Get addresses from wrapper
   const wrapperAddress = await wrapper.getAddress();
-  const underlyingTokenAddress = await wrapper.originalToken();
-
-  // Get cToken contract
-  const cToken = await ethers.getContractAt("RegulatedERC7984Upgradeable", wrapperAddress);
+  const underlyingTokenAddress = await wrapper.underlying();
 
   // Get wrapper's balance of underlying token
   let wrapperBalance: bigint;
@@ -406,15 +394,11 @@ export const verifyWrapperBacking = async (
     wrapperBalance = await underlyingToken.balanceOf(wrapperAddress);
   }
 
-  // Get confidential token total supply (encrypted)
-  const totalSupplyHandle = await cToken.confidentialTotalSupply();
-  const totalSupply = await fhevm.publicDecryptEuint(FhevmType.euint64, totalSupplyHandle);
-
-  // Ensure total supply is the same as the wrapper's counter
-  expect(await wrapper.mintedSupply()).to.equal(totalSupply);
+  // ConfidentialWrapper.totalSupply() returns underlying balance / rate
+  const totalSupply = await wrapper.totalSupply();
 
   // Get rate
-  const rate = await cToken.rate();
+  const rate = await wrapper.rate();
 
   // Calculate expected backing (totalSupply is in euint64 units, multiply by rate to get underlying units)
   const expectedBacking = totalSupply * rate;

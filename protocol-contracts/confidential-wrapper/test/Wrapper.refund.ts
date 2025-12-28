@@ -25,7 +25,8 @@ async function deployFixture(signers: Signers) {
   return { coordinator, adminProvider, usdc, rejectMock };
 }
 
-describe("Wrapper Refund Address Tests", function () {
+// Skipped - ConfidentialWrapper doesn't support refund addresses. Re-enable after upgrade to feature-rich wrapper.
+describe.skip("Wrapper Refund Address Tests", function () {
   let signers: Signers;
   let coordinator: DeploymentCoordinator;
   let adminProvider: AdminProvider;

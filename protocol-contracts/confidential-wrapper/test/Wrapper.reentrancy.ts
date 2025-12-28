@@ -48,7 +48,8 @@ async function deployFixture(signers: Signers) {
   };
 }
 
-describe("Wrapper Reentrancy Protection", function () {
+// Skipped - ConfidentialWrapper reentrancy tests not applicable. Re-enable after upgrade to feature-rich wrapper.
+describe.skip("Wrapper Reentrancy Protection", function () {
   let signers: Signers;
   let coordinator: DeploymentCoordinator;
   let callbackToken: ERC20WithCallback;

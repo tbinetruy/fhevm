@@ -3,7 +3,7 @@ pragma solidity 0.8.27;
 
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {FHE, ebool, euint64} from "@fhevm/solidity/lib/FHE.sol";
-import {IERC7984Receiver} from "openzeppelin-confidential-contracts/contracts/interfaces/IERC7984Receiver.sol";
+import {IERC7984Receiver} from "@openzeppelin/confidential-contracts/interfaces/IERC7984Receiver.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step.sol";
@@ -12,7 +12,7 @@ import {IUniswapV2Router02} from "../interfaces/IUniswap.sol";
 import {IWrapperReceiver} from "../interfaces/IWrapperReceiver.sol";
 import {DeploymentCoordinator} from "../factory/DeploymentCoordinator.sol";
 import {RegulatedERC7984Upgradeable} from "../token/RegulatedERC7984Upgradeable.sol";
-import {WrapperUpgradeable} from "../wrapper/WrapperUpgradeable.sol";
+import {ConfidentialWrapper} from "../wrapper/ERC7984ERC20WrapperUpgradeable.sol";
 
 
 struct SwapData {
@@ -220,9 +220,9 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
     ///      4. Input wrapper exists: coordinator.deployedWrappers(underlyingOrWeth) != address(0)
     ///      5. Output wrapper exists: coordinator.deployedWrappers(outputUnderlyingOrWeth) != address(0)
     ///      6. Wrapper consistency: wrapper == coordinator.deployedWrappers(underlyingAddress)
-    function checkPath(WrapperUpgradeable wrapper, address router, address[] memory path) public view returns (bool, string memory, bytes memory) {
-        address underlyingAddress = wrapper.originalToken();
-        WrapperUpgradeable wrapperIn = coordinator.deployedWrappers(underlyingAddress);
+    function checkPath(ConfidentialWrapper wrapper, address router, address[] memory path) public view returns (bool, string memory, bytes memory) {
+        address underlyingAddress = wrapper.underlying();
+        ConfidentialWrapper wrapperIn = coordinator.deployedWrappers(underlyingAddress);
 
         // check if router is whitelisted
         if (!whitelistedRouters[router]) {
@@ -263,7 +263,7 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
         address outputToken = path[path.length - 1];
         address outputUnderlying = (outputToken == weth) ? address(0) : outputToken;
 
-        WrapperUpgradeable wrapperOut = coordinator.deployedWrappers(outputUnderlying);
+        ConfidentialWrapper wrapperOut = coordinator.deployedWrappers(outputUnderlying);
         if (address(wrapperOut) == address(0)) {
             return (false, "", OUTPUT_PATH_HAS_NO_WRAPPER);
         }
@@ -305,7 +305,7 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
             bool isValidPath,
             string memory errorString,
             bytes memory errorLowLevelData
-        ) = checkPath(WrapperUpgradeable(payable(msg.sender)), swapData.routerAddress, swapData.path);
+        ) = checkPath(ConfidentialWrapper(payable(msg.sender)), swapData.routerAddress, swapData.path);
 
         if (!isValidPath) {
             _refundUser(swapData.routerAddress, swapData.path, amountIn, refundTo, unwrapRequestId, errorString, errorLowLevelData);
@@ -336,9 +336,9 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
         address refundTo,
         bytes calldata data
     ) external returns (bool) {
-        WrapperUpgradeable wrapper = WrapperUpgradeable(payable(msg.sender));
-        address underlyingAddress = wrapper.originalToken();
-        WrapperUpgradeable wrapperIn = coordinator.deployedWrappers(underlyingAddress);
+        ConfidentialWrapper wrapper = ConfidentialWrapper(payable(msg.sender));
+        address underlyingAddress = wrapper.underlying();
+        ConfidentialWrapper wrapperIn = coordinator.deployedWrappers(underlyingAddress);
 
         // is the wrapper that called onUnwrapFinalizedReceived the same as the one that's
         // associated with the underlying at the coordinator level.
@@ -442,20 +442,18 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
 
         // Determine the actual underlying token (ETH is address(0), not WETH)
         address outputUnderlying = (tokenOut == weth) ? address(0) : tokenOut;
-        WrapperUpgradeable wrapperOut = coordinator.deployedWrappers(outputUnderlying);
-
-        uint256 wrapTxId = wrapperOut.nextTxId();
+        ConfidentialWrapper wrapperOut = coordinator.deployedWrappers(outputUnderlying);
 
         if (tokenOut == weth) {
             // ETH output: send ETH value to wrapper
-            wrapperOut.wrap{value: amountOut}(to, amountOut);
+            wrapperOut.wrapETH{value: amountOut}(to, amountOut);
         } else {
             // ERC20 output: approve and wrap
             IERC20(tokenOut).forceApprove(address(wrapperOut), amountOut);
             wrapperOut.wrap(to, amountOut);
         }
 
-        emit Swap(true, path, unwrapRequestId, wrapTxId, "", new bytes(0));
+        emit Swap(true, path, unwrapRequestId, 0, "", new bytes(0));
     }
 
     /// @notice Refunds user by re-wrapping input tokens when swap fails
@@ -481,24 +479,22 @@ contract SwapV0 is IWrapperReceiver, Ownable2Step {
         string memory errorReasonString,
         bytes memory errorLowLevelData
     ) internal returns (bool) {
-        WrapperUpgradeable wrapperIn = WrapperUpgradeable(payable(msg.sender));
-
-        uint256 wrapTxId = wrapperIn.nextTxId();
+        ConfidentialWrapper wrapperIn = ConfidentialWrapper(payable(msg.sender));
 
         // ETH refund
-        if (wrapperIn.originalToken() == address(0)) {
+        if (wrapperIn.underlying() == address(0)) {
             uint256 refundAmount = address(this).balance < amountIn ? address(this).balance : amountIn;
-            wrapperIn.wrap{value: refundAmount}(to, refundAmount);
+            wrapperIn.wrapETH{value: refundAmount}(to, refundAmount);
         } else {
             // ERC20 refund: handle fee-on-transfer tokens
-            uint256 balance = IERC20(wrapperIn.originalToken()).balanceOf(address(this));
+            uint256 balance = IERC20(wrapperIn.underlying()).balanceOf(address(this));
             uint256 refundAmount = balance < amountIn ? balance : amountIn;
-            IERC20(wrapperIn.originalToken()).forceApprove(router, 0);
-            IERC20(wrapperIn.originalToken()).forceApprove(address(wrapperIn), refundAmount);
+            IERC20(wrapperIn.underlying()).forceApprove(router, 0);
+            IERC20(wrapperIn.underlying()).forceApprove(address(wrapperIn), refundAmount);
             wrapperIn.wrap(to, refundAmount);
         }
 
-        emit Swap(false, path, unwrapRequestId, wrapTxId, errorReasonString, errorLowLevelData);
+        emit Swap(false, path, unwrapRequestId, 0, errorReasonString, errorLowLevelData);
 
         return false;
     }

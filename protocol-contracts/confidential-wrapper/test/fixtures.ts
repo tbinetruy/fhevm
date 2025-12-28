@@ -142,8 +142,8 @@ export async function deployCoordinator(signers: Signers, adminProvider?: AdminP
       ({ adminProvider } = await deployAdminProviderFixture(signers));
   }
 
-  const wrapperUpgradeableFactory = await ethers.getContractFactory("WrapperUpgradeable");
-  const wrapperImplementation = await wrapperUpgradeableFactory.deploy();
+  const confidentialWrapperFactory = await ethers.getContractFactory("ConfidentialWrapper");
+  const wrapperImplementation = await confidentialWrapperFactory.deploy();
   await wrapperImplementation.waitForDeployment();
 
   const coordinatorFactory = (await ethers.getContractFactory("DeploymentCoordinator")) as DeploymentCoordinator__factory;
@@ -159,8 +159,8 @@ export async function deployWrapperFixture(signers: Signers) {
   const { adminProvider, coordinator, confidentialTokenFactory, wrapperFactory } = await deployCoordinator(signers);
 
   // Deploy wrapper implementation contract
-  const wrapperUpgradeableFactory = await ethers.getContractFactory("WrapperUpgradeable");
-  const wrapperImplementation = await wrapperUpgradeableFactory.deploy();
+  const confidentialWrapperFactory = await ethers.getContractFactory("ConfidentialWrapper");
+  const wrapperImplementation = await confidentialWrapperFactory.deploy();
   await wrapperImplementation.waitForDeployment();
 
   // Set wrapper implementation on coordinator

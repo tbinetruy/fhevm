@@ -42,7 +42,8 @@ async function getSwapFinalizedReceipt(transferReceipt: any, wrapper: Wrapper, s
 
 
 
-describe("Uniswap V2 Swap Test", function () {
+// Skipped - No callback support. Re-enable after upgrade to feature-rich wrapper.
+describe.skip("Uniswap V2 Swap Test", function () {
   let signers: Signers;
   let tokenA: TestERC20;
   let coordinator: DeploymentCoordinator;

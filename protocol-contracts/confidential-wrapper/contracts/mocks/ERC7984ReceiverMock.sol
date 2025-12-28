@@ -4,7 +4,7 @@ pragma solidity 0.8.27;
 
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {FHE, ebool, euint64} from "@fhevm/solidity/lib/FHE.sol";
-import {IERC7984Receiver} from "openzeppelin-confidential-contracts/contracts/interfaces/IERC7984Receiver.sol";
+import {IERC7984Receiver} from "@openzeppelin/confidential-contracts/interfaces/IERC7984Receiver.sol";
 
 contract ERC7984ReceiverMock is IERC7984Receiver, ZamaEthereumConfig {
     event ConfidentialTransferCallback(bool success);

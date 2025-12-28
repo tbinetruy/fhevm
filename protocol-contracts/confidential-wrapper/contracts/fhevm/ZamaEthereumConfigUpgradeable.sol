@@ -5,12 +5,12 @@ import {FHE} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-abstract contract EthereumConfigUpgradeable is Initializable {
-    function __EthereumConfig_init() internal onlyInitializing {
-        __EthereumConfig_init_unchained();
+abstract contract ZamaEthereumConfigUpgradeable is Initializable {
+    function __ZamaEthereumConfig_init() internal onlyInitializing {
+        __ZamaEthereumConfig_init_unchained();
     }
 
-    function __EthereumConfig_init_unchained() internal onlyInitializing {
+    function __ZamaEthereumConfig_init_unchained() internal onlyInitializing {
         FHE.setCoprocessor(ZamaConfig.getEthereumCoprocessorConfig());
     }
 

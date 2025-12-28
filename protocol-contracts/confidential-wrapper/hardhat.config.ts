@@ -24,9 +24,7 @@ const config: HardhatUserConfig = {
     deployer: 0,
   },
   etherscan: {
-    apiKey: {
-      sepolia: vars.get("ETHERSCAN_API_KEY", ""),
-    },
+    apiKey: "54T3GADNBN15E72V7GUZ99X1DD3MNINSR6",
   },
   gasReporter: {
     currency: "USD",
@@ -56,7 +54,7 @@ const config: HardhatUserConfig = {
         count: 10,
       },
       chainId: 11155111,
-      url: `https://sepolia.infura.io/v3/${INFURA_API_KEY}`,
+      url: "https://eth-sepolia.g.alchemy.com/v2/2OSJO675A79v8vij5kFQPxx1eBX7CE1o",
     },
   },
   paths: {

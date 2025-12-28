@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import {FHE, ebool, euint64 } from "@fhevm/solidity/lib/FHE.sol";
-import {EthereumConfigUpgradeable} from "../fhevm/EthereumConfigUpgradeable.sol";
+import {ZamaEthereumConfigUpgradeable} from "../fhevm/ZamaEthereumConfigUpgradeable.sol";
 import {ERC7984Upgradeable} from "./ERC7984Upgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 import {AccessControlDefaultAdminRulesUpgradeable} from "@openzeppelin/contracts-upgradeable/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol";
@@ -30,7 +30,7 @@ interface FHEErrors {
 
 /// @custom:security-contact contact@zaiffer.org
 contract RegulatedERC7984Upgradeable is
-    EthereumConfigUpgradeable,
+    ZamaEthereumConfigUpgradeable,
     AccessControlDefaultAdminRulesUpgradeable,
     ERC7984Upgradeable,
     UUPSUpgradeable,
@@ -76,7 +76,7 @@ contract RegulatedERC7984Upgradeable is
         uint256 rate_,
         IDeploymentCoordinator deploymentCoordinator_
     ) public initializer {
-        __EthereumConfig_init();
+        __ZamaEthereumConfig_init();
         __AccessControlDefaultAdminRules_init(0, admin_); // 0 delay for admin transfer
         __ERC7984_init(name_, symbol_, "");
 

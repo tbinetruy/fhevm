@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity 0.8.27;
 
-import {WrapperUpgradeable} from "../wrapper/WrapperUpgradeable.sol";
+import {ConfidentialWrapper} from "../wrapper/ERC7984ERC20WrapperUpgradeable.sol";
 import {RegulatedERC7984Upgradeable} from "../token/RegulatedERC7984Upgradeable.sol";
 import {AdminProvider} from "../admin/AdminProvider.sol";
 import {FeeManager} from "../admin/FeeManager.sol";
@@ -10,6 +10,7 @@ import {Ownable2Step, Ownable} from "@openzeppelin/contracts/access/Ownable2Step
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
 /// @notice Coordinator that orchestrates deployment using specialized factories
 /// @dev Coordinates WrapperFactory and RegulatedERC7984UpgradeableFactory to deploy wrapper pairs
@@ -21,7 +22,7 @@ contract DeploymentCoordinator is Ownable2Step {
     address public wrapperImplementation;
 
     /// @notice Mapping from original token address to deployed wrapper address (for compatibility)
-    mapping(address originalToken => WrapperUpgradeable wrapper) public deployedWrappers;
+    mapping(address originalToken => ConfidentialWrapper wrapper) public deployedWrappers;
 
     error ZeroAddressAdminProvider();
     error ZeroAddressWrapperFactory();
@@ -63,7 +64,7 @@ contract DeploymentCoordinator is Ownable2Step {
     function deploy(address originalToken_)
         external
         payable
-        returns (WrapperUpgradeable wrapper)
+        returns (ConfidentialWrapper wrapper)
     {
         // Get deploy fee from FeeManager
         uint64 requiredFee = _getDeployFee();
@@ -124,7 +125,7 @@ contract DeploymentCoordinator is Ownable2Step {
     /// @param originalToken_ Address of the original token
     function _deployWrapper(address originalToken_)
         internal
-        returns (WrapperUpgradeable wrapper, string memory originalName, string memory originalSymbol, uint8 originalDecimals)
+        returns (ConfidentialWrapper wrapper, string memory originalName, string memory originalSymbol, uint8 originalDecimals)
     {
         if (originalToken_ != address(0)) {
             originalName = _tryGetAssetName(originalToken_);
@@ -136,33 +137,38 @@ contract DeploymentCoordinator is Ownable2Step {
             originalDecimals = 18;
         }
 
-        uint8 maxDecimals = _maxDecimals();
-        uint8 tokenDecimals;
-        uint256 rate;
+        string memory confidentialName = string.concat("Confidential ", originalName);
+        string memory confidentialSymbol = string.concat("c", originalSymbol);
+        string memory description = string.concat(
+            "Confidential wrapper of ",
+            originalSymbol,
+            " shielding it into a confidential token"
+        );
 
-        if (originalDecimals > maxDecimals) {
-            tokenDecimals = maxDecimals;
-            rate = 10 ** (originalDecimals - maxDecimals);
-        } else {
-            tokenDecimals = originalDecimals;
-            rate = 1;
-        }
+        string memory contractURI = string.concat(
+            "data:application/json;utf8,",
+            '{"name":"',
+            confidentialName,
+            '","symbol":"',
+            confidentialSymbol,
+            '","description":"',
+            description,
+            '"}'
+        );
 
         bytes memory data = abi.encodeCall(
-            WrapperUpgradeable.initialize,
+            ConfidentialWrapper.initialize,
             (
-                string.concat("confidential ", originalName),
+                string.concat("Confidential ", originalName),
                 string.concat("c", originalSymbol),
-                tokenDecimals,
-                adminProvider.owner(),
-                rate,
-                IDeploymentCoordinator(address(this)),
-                originalToken_
+                contractURI,
+                IERC20(originalToken_),
+                adminProvider.owner()
             )
         );
 
         ERC1967Proxy proxy = new ERC1967Proxy(wrapperImplementation, data);
-        wrapper = WrapperUpgradeable(payable(address(proxy)));
+        wrapper = ConfidentialWrapper(payable(address(proxy)));
     }
 
     /// @notice Get deploy fee from AdminProvider's FeeManager
